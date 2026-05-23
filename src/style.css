@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #app {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    @apply bg-gray-950 text-gray-100 font-sans;
+    min-width: 1280px;
+  }
+}
+
+@layer components {
+  .alert-blue   { @apply bg-blue-500/20 border-blue-500 text-blue-300; }
+  .alert-orange { @apply bg-orange-500/20 border-orange-500 text-orange-300; }
+  .alert-red    { @apply bg-red-500/20 border-red-500 text-red-300; }
+}
