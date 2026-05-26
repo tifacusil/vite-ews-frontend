@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
-      pull-requests: write   # para publicar el comentario con la URL
+      pull-requests: write
     env:
       VERCEL_TOKEN:      ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
@@ -59,7 +59,13 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull Vercel environment
+      # Escribir .env desde el secret antes de que Vite lo lea durante el build
+      - name: Create .env
+        run: |
+          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env
+
+      # vercel pull solo vincula el proyecto (.vercel/project.json); no toca .env
+      - name: Link Vercel project
         run: vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
 
       - name: Build via Vercel CLI
@@ -105,7 +111,13 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull Vercel environment
+      # Escribir .env desde el secret antes de que Vite lo lea durante el build
+      - name: Create .env
+        run: |
+          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env
+
+      # vercel pull solo vincula el proyecto (.vercel/project.json); no toca .env
+      - name: Link Vercel project
         run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
 
       - name: Build via Vercel CLI
