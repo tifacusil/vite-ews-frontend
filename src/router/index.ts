@@ -25,14 +25,29 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach(to => {
+/** Devuelve true si existe un token vigente (no expirado). */
+function hasValidToken(): boolean {
   const token = localStorage.getItem('jwt_token')
+  if (!token) return false
+  const expiresAt = localStorage.getItem('jwt_expires_at')
+  if (!expiresAt) return true // sin info → asumir válido, el interceptor del API lo controlará
+  return Date.now() < new Date(expiresAt).getTime() - 30_000
+}
 
+router.beforeEach(to => {
   // Rutas públicas — sin guard
   if (to.meta.public) return
 
-  // Sin token → login
-  if (!token) return { name: 'login' }
+  // Sin token válido → login
+  if (!hasValidToken()) {
+    // Limpiar storage si el token expiró
+    if (localStorage.getItem('jwt_token')) {
+      localStorage.removeItem('jwt_token')
+      localStorage.removeItem('jwt_user')
+      localStorage.removeItem('jwt_expires_at')
+    }
+    return { name: 'login' }
+  }
 
   // Guard de admin
   if (to.meta.requiresAdmin) {
