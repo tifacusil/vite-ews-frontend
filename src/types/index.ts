@@ -19,37 +19,46 @@ export interface ActiveAlert {
   project_id: ProjectId
 }
 
-// ─── Sensor envelope ────────────────────────────────────────────────────────
+// ─── Sensor readings API response ────────────────────────────────────────────
+// La API devuelve: { total, offset, limit, items: [{ projectId, sensorId, timestamp, payload }] }
 
-export interface SensorEnvelope<T> {
-  project_id: string
-  sensor_id: string
-  sensor_type: SensorTab
-  sampling_interval_seconds: number
-  data: T[]
+export interface ApiReadingItem<TPayload> {
+  projectId: string
+  sensorId: string
+  sensorType: string
+  timestamp: string
+  receivedAt: string
+  payload: TPayload
+}
+
+export interface ApiReadingsResponse<TPayload> {
+  total: number
+  offset: number
+  limit: number
+  items: ApiReadingItem<TPayload>[]
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
+// La API devuelve snake_case: user_id, expires_at
 
 export interface LoginResponse {
   token: string
-  userId: number
+  user_id: number
   username: string
   role: string
-  expiresAt: string
+  expires_at: string
 }
 
 // ─── User Management ─────────────────────────────────────────────────────────
+// La API devuelve snake_case en todos los campos
 
 export interface Subscription {
   id: number
-  projectId: string
-  minAlertLevel: AlertLevel
-  smsEnabled: boolean
-  pushEnabled: boolean
-  emailEnabled: boolean
-  quietHoursStart: string | null
-  quietHoursEnd: string | null
+  project_id: string
+  min_alert_level: AlertLevel
+  sms_enabled: boolean
+  push_enabled: boolean
+  email_enabled: boolean
 }
 
 // ─── Project Management ──────────────────────────────────────────────────────
@@ -61,16 +70,36 @@ export interface ProjectDetail {
   location_lng: number
   status: string
   created_at: string
+  sensors?: ProjectSensor[]
 }
 
-// ─── Alert (Early Warning — API) ─────────────────────────────────────────────
-
-export interface Alert {
+export interface ProjectSensor {
   sensor_id: string
   project_id: string
-  level: AlertLevel
-  speed_mm_day: number
-  timestamp: string
+  sensor_type: string
+  model: string
+  status: string
+}
+
+// ─── User Profile ─────────────────────────────────────────────────────────────
+// La API devuelve snake_case: user_id, phone_e164, created_at
+
+export interface UserProfile {
+  user_id: number
+  username: string
+  email: string
+  phone_e164: string | null
+  role: string
+  status: string
+  created_at: string
+}
+
+export interface RegisterRequest {
+  username: string
+  email: string
+  phone_e164?: string
+  password: string
+  role: 'admin' | 'operator' | 'viewer'
 }
 
 // ─── GNSS — REQ-WEB-04 ──────────────────────────────────────────────────────
@@ -119,26 +148,6 @@ export interface DeepDisplacementReading {
   tilt_x_mm: number
   tilt_y_mm: number
   cumulative_tilt_mm: number
-}
-
-// ─── User Management — perfil y registro ─────────────────────────────────────
-
-export interface UserProfile {
-  userId: number
-  username: string
-  email: string
-  phoneE164: string | null
-  role: string
-  status: string
-  createdAt: string
-}
-
-export interface RegisterRequest {
-  username: string
-  email: string
-  phoneE164?: string
-  password: string
-  role: 'admin' | 'operator' | 'viewer'
 }
 
 // ─── Date range filter ───────────────────────────────────────────────────────

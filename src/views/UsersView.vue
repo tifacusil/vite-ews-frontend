@@ -88,7 +88,7 @@
                   >{{ user.role }}</span>
                 </td>
                 <td class="px-5 py-3 text-gray-400 text-xs">{{ user.email || '—' }}</td>
-                <td class="px-5 py-3 text-gray-400 text-xs font-mono">{{ user.phoneE164 || '—' }}</td>
+                <td class="px-5 py-3 text-gray-400 text-xs font-mono">{{ user.phone_e164 || '—' }}</td>
                 <td class="px-5 py-3">
                   <span
                     class="px-2 py-0.5 rounded-full text-xs"
@@ -130,6 +130,7 @@
             <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
               <h2 class="text-gray-100 font-semibold text-sm">
                 Editar — <span class="font-mono text-blue-400">{{ editModal.user?.username }}</span>
+                <span class="text-gray-500 font-normal text-xs ml-2">#{{ editModal.user?.user_id }}</span>
               </h2>
               <button @click="closeEditModal" class="text-gray-500 hover:text-gray-300 transition-colors">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -220,15 +221,15 @@
                     :key="sub.id"
                     class="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2 text-xs"
                   >
-                    <span class="font-mono text-gray-300 font-medium">{{ sub.projectId }}</span>
+                    <span class="font-mono text-gray-300 font-medium">{{ sub.project_id }}</span>
                     <span
                       class="px-1.5 py-0.5 rounded text-xs font-bold uppercase"
-                      :class="alertBadgeClass(sub.minAlertLevel)"
-                    >{{ sub.minAlertLevel }}</span>
+                      :class="alertBadgeClass(sub.min_alert_level)"
+                    >{{ sub.min_alert_level }}</span>
                     <span class="ml-auto flex gap-2 text-gray-500">
-                      <span v-if="sub.smsEnabled"  title="SMS">📱</span>
-                      <span v-if="sub.emailEnabled" title="Email">✉️</span>
-                      <span v-if="sub.pushEnabled"  title="Push">🔔</span>
+                      <span v-if="sub.sms_enabled"   title="SMS">📱</span>
+                      <span v-if="sub.email_enabled"  title="Email">✉️</span>
+                      <span v-if="sub.push_enabled"   title="Push">🔔</span>
                     </span>
                   </li>
                 </ul>
@@ -451,18 +452,15 @@ const users = ref<UserProfile[]>([])
 const loadingList = ref(false)
 const listError = ref<string | null>(null)
 
-// Seed conocido: userId 1-5. Cargamos en paralelo y descartamos los que fallen.
+// Carga el propio usuario admin (el único que conocemos con certeza es el autenticado).
+// Si la API implementa GET /users en el futuro, reemplazar aquí.
 async function loadUsers() {
   loadingList.value = true
   listError.value = null
   try {
-    const results = await Promise.allSettled(
-      [1, 2, 3, 4, 5].map(id => getUser(id).then(r => r.data))
-    )
-    users.value = results
-      .filter((r): r is PromiseFulfilledResult<UserProfile> => r.status === 'fulfilled')
-      .map(r => r.value)
-    if (users.value.length === 0) listError.value = 'No se pudieron cargar los usuarios.'
+    if (!auth.user?.userId) throw new Error('Sin sesión activa')
+    const res = await getUser(auth.user.userId)
+    users.value = [res.data]
   } catch (err) {
     listError.value = err instanceof Error ? err.message : 'Error al cargar usuarios.'
   } finally {
@@ -517,7 +515,7 @@ const newSub = reactive({
 async function openEditModal(user: UserProfile) {
   editModal.user = user
   editModal.email = user.email ?? ''
-  editModal.phone = user.phoneE164 ?? ''
+  editModal.phone = user.phone_e164 ?? ''
   editModal.saving = false
   editModal.error = null
   editModal.showSubForm = false
@@ -525,10 +523,10 @@ async function openEditModal(user: UserProfile) {
   editModal.subscriptions = []
   editModal.open = true
 
-  // Cargar suscripciones
+  // Cargar suscripciones (API devuelve snake_case)
   editModal.loadingSubs = true
   try {
-    const res = await getSubscriptions(user.userId)
+    const res = await getSubscriptions(user.user_id)
     editModal.subscriptions = res.data
   } catch {
     editModal.subscriptions = []
@@ -547,12 +545,12 @@ async function handleSaveUser() {
   editModal.saving = true
   editModal.error = null
   try {
-    const updated = await updateUser(editModal.user.userId, {
+    // API espera snake_case
+    const updated = await updateUser(editModal.user.user_id, {
       email: editModal.email || undefined,
-      phoneE164: editModal.phone || undefined
+      phone_e164: editModal.phone || undefined
     })
-    // Actualizar en la lista local
-    const idx = users.value.findIndex(u => u.userId === editModal.user!.userId)
+    const idx = users.value.findIndex(u => u.user_id === editModal.user!.user_id)
     if (idx !== -1) users.value[idx] = updated.data
     closeEditModal()
   } catch (err) {
@@ -567,14 +565,13 @@ async function handleCreateSub() {
   editModal.savingSub = true
   editModal.subError = null
   try {
-    const res = await createSubscription(editModal.user.userId, {
-      projectId: newSub.projectId,
-      minAlertLevel: newSub.minAlertLevel,
-      smsEnabled: newSub.smsEnabled,
-      pushEnabled: newSub.pushEnabled,
-      emailEnabled: newSub.emailEnabled,
-      quietHoursStart: null,
-      quietHoursEnd: null
+    // API espera snake_case
+    const res = await createSubscription(editModal.user.user_id, {
+      project_id: newSub.projectId,
+      min_alert_level: newSub.minAlertLevel,
+      sms_enabled: newSub.smsEnabled,
+      push_enabled: newSub.pushEnabled,
+      email_enabled: newSub.emailEnabled
     })
     editModal.subscriptions.push(res.data)
     editModal.showSubForm = false
@@ -632,7 +629,7 @@ async function handleCreateUser() {
       email: createModal.email,
       password: createModal.password,
       role: createModal.role,
-      ...(createModal.phone ? { phoneE164: createModal.phone } : {})
+      ...(createModal.phone ? { phone_e164: createModal.phone } : {})
     }
     await register(payload)
     closeCreateModal()

@@ -31,11 +31,11 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     async login(username: string, password: string): Promise<void> {
       const res = await api.post<LoginResponse>('/api/v1/auth/login', { username, password })
-      const { token, userId, username: uname, role } = res.data
+      const { token, user_id, username: uname, role } = res.data
       this.token = token
-      this.user = { userId, username: uname, role }
+      this.user = { userId: user_id, username: uname, role }
       localStorage.setItem('jwt_token', token)
-      localStorage.setItem('jwt_user', JSON.stringify({ userId, username: uname, role }))
+      localStorage.setItem('jwt_user', JSON.stringify({ userId: user_id, username: uname, role }))
     },
 
     logout(): void {

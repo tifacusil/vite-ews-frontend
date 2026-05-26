@@ -9,7 +9,7 @@
           class="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-gray-100
                  focus:outline-none focus:border-blue-500"
         >
-          <option v-for="s in GNSS_SENSORS" :key="s" :value="s">{{ s }}</option>
+          <option v-for="s in store.gnssSensors" :key="s" :value="s">{{ s }}</option>
         </select>
       </div>
 
@@ -27,7 +27,6 @@
       </div>
 
       <div class="ml-auto flex items-center gap-3">
-        <!-- Estado de carga / error -->
         <span v-if="loading" class="text-xs text-gray-500 animate-pulse">Cargando…</span>
         <span v-else-if="error" class="text-xs text-red-400" :title="error">⚠ Error al cargar</span>
         <span v-else class="text-xs text-gray-500 font-mono">
@@ -36,21 +35,13 @@
       </div>
     </div>
 
-    <!-- Error inline sin romper layout -->
-    <div
-      v-if="error && !loading"
-      class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
-    >
+    <div v-if="error && !loading"
+      class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
       {{ error }}
     </div>
 
-    <!-- Chart -->
     <div class="flex-1 min-h-0">
-      <VChart
-        :option="chartOption"
-        autoresize
-        class="w-full h-full"
-      />
+      <VChart :option="chartOption" autoresize class="w-full h-full" />
     </div>
   </div>
 </template>
@@ -60,18 +51,13 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import {
-  GridComponent, TooltipComponent, LegendComponent,
-  DataZoomComponent, ToolboxComponent
-} from 'echarts/components'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, ToolboxComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { GNSS_SENSORS } from '@/data/mock'
 import { useProjectStore } from '@/stores/project'
 import api from '@/api'
-import type { SensorEnvelope, GnssReading, DateRange } from '@/types'
+import type { ApiReadingsResponse, GnssReading, DateRange } from '@/types'
 
-use([LineChart, GridComponent, TooltipComponent, LegendComponent,
-     DataZoomComponent, ToolboxComponent, CanvasRenderer])
+use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, ToolboxComponent, CanvasRenderer])
 
 const store = useProjectStore()
 
@@ -80,12 +66,18 @@ const selectedRange = ref<DateRange>('1y')
 const sensorData = ref<GnssReading[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
-const intervalSeconds = ref(3600)
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
+const POLL_INTERVAL_MS = 3600 * 1000
 
-// Sincronizar con store
 watch(selectedSensor, s => store.setGnssSensor(s))
+
+// Cuando el proyecto cambia, usar el primer sensor GNSS de ese proyecto
+watch(() => store.gnssSensors, sensors => {
+  if (sensors.length > 0 && !sensors.includes(selectedSensor.value)) {
+    selectedSensor.value = sensors[0]
+  }
+}, { immediate: true })
 
 const ranges: Array<{ label: string; value: DateRange }> = [
   { label: '3 meses', value: '3m' },
@@ -105,31 +97,28 @@ async function fetchData() {
   try {
     const now = new Date()
     const from = cutoffDate(selectedRange.value)
-    const res = await api.get<SensorEnvelope<GnssReading>>(
+    const res = await api.get<ApiReadingsResponse<GnssReading>>(
       `/api/v1/sensors/${selectedSensor.value}/readings`,
-      { params: { sensor_type: 'gnss', from: from.toISOString(), to: now.toISOString() } }
+      { params: { sensor_type: 'gnss', from: from.toISOString(), to: now.toISOString(), limit: 1000 } }
     )
-    sensorData.value = res.data.data
-    intervalSeconds.value = res.data.sampling_interval_seconds ?? 3600
-    store.setPollingInterval(intervalSeconds.value)
-    store.setPollingError(null)
+    // La API devuelve items[].payload con los campos de lectura + timestamp en el item
+    sensorData.value = res.data.items.map(item => ({
+      timestamp: item.timestamp,
+      ...item.payload
+    }))
     error.value = null
+    store.setPollingError(null)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     error.value = msg
     store.setPollingError(msg)
   } finally {
     loading.value = false
-    schedulePoll()
+    if (pollTimer !== null) clearTimeout(pollTimer)
+    pollTimer = setTimeout(fetchData, POLL_INTERVAL_MS)
   }
 }
 
-function schedulePoll() {
-  if (pollTimer !== null) clearTimeout(pollTimer)
-  pollTimer = setTimeout(fetchData, intervalSeconds.value * 1000)
-}
-
-// Re-fetch al cambiar sensor o rango
 watch([selectedSensor, selectedRange], () => {
   if (pollTimer !== null) clearTimeout(pollTimer)
   fetchData()
@@ -162,65 +151,19 @@ const chartOption = computed(() => ({
       return `<div class="text-xs">${ts}<br/>${rows}</div>`
     }
   },
-  legend: {
-    data: ['Dx', 'Dy', 'Dh (horizontal)', 'Acumulado'],
-    textStyle: { color: '#9ca3af', fontSize: 11 },
-    top: 0
-  },
+  legend: { data: ['Dx', 'Dy', 'Dh (horizontal)', 'Acumulado'], textStyle: { color: '#9ca3af', fontSize: 11 }, top: 0 },
   grid: { top: 40, right: 20, bottom: 60, left: 60, containLabel: false },
-  xAxis: {
-    type: 'time',
-    axisLine: { lineStyle: { color: '#374151' } },
-    axisLabel: { color: '#6b7280', fontSize: 10 },
-    splitLine: { lineStyle: { color: '#1f2937' } }
-  },
-  yAxis: {
-    type: 'value',
-    name: 'mm',
-    nameTextStyle: { color: '#6b7280', fontSize: 10 },
-    axisLine: { lineStyle: { color: '#374151' } },
-    axisLabel: { color: '#6b7280', fontSize: 10 },
-    splitLine: { lineStyle: { color: '#1f2937' } }
-  },
+  xAxis: { type: 'time', axisLine: { lineStyle: { color: '#374151' } }, axisLabel: { color: '#6b7280', fontSize: 10 }, splitLine: { lineStyle: { color: '#1f2937' } } },
+  yAxis: { type: 'value', name: 'mm', nameTextStyle: { color: '#6b7280', fontSize: 10 }, axisLine: { lineStyle: { color: '#374151' } }, axisLabel: { color: '#6b7280', fontSize: 10 }, splitLine: { lineStyle: { color: '#1f2937' } } },
   dataZoom: [
-    { type: 'slider', bottom: 8, height: 20, textStyle: { color: '#6b7280' },
-      borderColor: '#374151', fillerColor: 'rgba(59,130,246,0.1)',
-      handleStyle: { color: '#3B82F6' } },
+    { type: 'slider', bottom: 8, height: 20, textStyle: { color: '#6b7280' }, borderColor: '#374151', fillerColor: 'rgba(59,130,246,0.1)', handleStyle: { color: '#3B82F6' } },
     { type: 'inside' }
   ],
   series: [
-    {
-      name: 'Dx',
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { color: '#3B82F6', width: 1.5 },
-      data: filteredData.value.map(r => [r.timestamp, r.displacement_x_mm])
-    },
-    {
-      name: 'Dy',
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { color: '#8B5CF6', width: 1.5 },
-      data: filteredData.value.map(r => [r.timestamp, r.displacement_y_mm])
-    },
-    {
-      name: 'Dh (horizontal)',
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { color: '#F97316', width: 2 },
-      data: filteredData.value.map(r => [r.timestamp, r.displacement_horizontal_mm])
-    },
-    {
-      name: 'Acumulado',
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { color: '#22C55E', width: 2.5 },
-      data: filteredData.value.map(r => [r.timestamp, r.cumulative_displacement_mm])
-    }
+    { name: 'Dx',             type: 'line', smooth: true, showSymbol: false, lineStyle: { color: '#3B82F6', width: 1.5 }, data: filteredData.value.map(r => [r.timestamp, r.displacement_x_mm]) },
+    { name: 'Dy',             type: 'line', smooth: true, showSymbol: false, lineStyle: { color: '#8B5CF6', width: 1.5 }, data: filteredData.value.map(r => [r.timestamp, r.displacement_y_mm]) },
+    { name: 'Dh (horizontal)',type: 'line', smooth: true, showSymbol: false, lineStyle: { color: '#F97316', width: 2   }, data: filteredData.value.map(r => [r.timestamp, r.displacement_horizontal_mm]) },
+    { name: 'Acumulado',      type: 'line', smooth: true, showSymbol: false, lineStyle: { color: '#22C55E', width: 2.5 }, data: filteredData.value.map(r => [r.timestamp, r.cumulative_displacement_mm]) }
   ]
 }))
 </script>
