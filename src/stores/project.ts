@@ -1,14 +1,12 @@
 import { defineStore } from 'pinia'
 import api from '@/api'
-import type { SensorTab, ProjectDetail, Subscription } from '@/types'
+import type { SensorTab, ProjectDetail, Subscription, RecentAlert, RecentAlertsResponse, AlertLevel } from '@/types'
 
-// Alert interno normalizado (no hay endpoint /alerts, se deriva de lecturas futuras)
-export interface StoreAlert {
-  sensor_id: string
-  project_id: string
-  level: 'blue' | 'orange' | 'red'
-  speed_mm_day: number
-  timestamp: string
+// Jerarquía de niveles: cuánto más alto el índice, más severo
+const LEVEL_ORDER: AlertLevel[] = ['blue', 'orange', 'red']
+
+function levelGte(level: AlertLevel, minLevel: AlertLevel): boolean {
+  return LEVEL_ORDER.indexOf(level) >= LEVEL_ORDER.indexOf(minLevel)
 }
 
 export const useProjectStore = defineStore('project', {
@@ -17,29 +15,38 @@ export const useProjectStore = defineStore('project', {
     activeTab: 'gnss' as SensorTab,
     selectedGnssSensor: 'GXZM-DB03',
     projects: [] as ProjectDetail[],
-    alerts: [] as StoreAlert[],
+    // Suscripciones del usuario (para filtrar por min_alert_level por proyecto)
+    subscriptions: [] as Subscription[],
+    // Alertas recientes ya filtradas por proyecto y suscripción
+    alerts: [] as RecentAlert[],
     pollingInterval: 3600,
     pollingError: null as string | null
   }),
 
   getters: {
-    currentAlerts(state): StoreAlert[] {
+    /** Alertas del proyecto seleccionado, filtradas por min_alert_level de la suscripción. */
+    currentAlerts(state): RecentAlert[] {
       if (!Array.isArray(state.alerts)) return []
-      return state.alerts.filter(a => a.project_id === state.selectedProject)
+      const sub = state.subscriptions.find(s => s.project_id === state.selectedProject)
+      const minLevel: AlertLevel = sub?.min_alert_level ?? 'blue'
+      return state.alerts.filter(
+        a => a.project_id === state.selectedProject && levelGte(a.alert_level, minLevel)
+      )
     },
 
+    /** Nivel máximo de alerta de un proyecto (para el mapa y el header). */
     alertLevelFor(state): (projectId: string) => string {
       return (projectId: string) => {
         if (!Array.isArray(state.alerts)) return 'green'
         const list = state.alerts.filter(a => a.project_id === projectId)
-        if (list.some(a => a.level === 'red'))    return 'red'
-        if (list.some(a => a.level === 'orange')) return 'orange'
-        if (list.some(a => a.level === 'blue'))   return 'blue'
+        if (list.some(a => a.alert_level === 'red'))    return 'red'
+        if (list.some(a => a.alert_level === 'orange')) return 'orange'
+        if (list.some(a => a.alert_level === 'blue'))   return 'blue'
         return 'green'
       }
     },
 
-    /** Sensores GNSS del proyecto seleccionado (de la lista de sensores del proyecto). */
+    /** Sensores GNSS del proyecto seleccionado. */
     gnssSensors(state): string[] {
       const proj = state.projects.find(p => p.project_id === state.selectedProject)
       if (!proj?.sensors) return ['GXZM-DB03']
@@ -57,7 +64,6 @@ export const useProjectStore = defineStore('project', {
       } else {
         if (this.activeTab === 'deep_displacement') this.activeTab = 'gnss'
       }
-      // Resetear sensor GNSS al primero disponible
       const proj = this.projects.find(p => p.project_id === id)
       if (proj?.sensors) {
         const first = proj.sensors.find(
@@ -67,54 +73,52 @@ export const useProjectStore = defineStore('project', {
       }
     },
 
-    setTab(tab: SensorTab) {
-      this.activeTab = tab
-    },
-
-    setGnssSensor(sensorId: string) {
-      this.selectedGnssSensor = sensorId
-    },
-
-    setPollingInterval(seconds: number) {
-      this.pollingInterval = seconds
-    },
-
-    setPollingError(err: string | null) {
-      this.pollingError = err
-    },
+    setTab(tab: SensorTab) { this.activeTab = tab },
+    setGnssSensor(sensorId: string) { this.selectedGnssSensor = sensorId },
+    setPollingInterval(seconds: number) { this.pollingInterval = seconds },
+    setPollingError(err: string | null) { this.pollingError = err },
 
     async loadProjects(userId: number): Promise<void> {
-      // 1. Obtener suscripciones (API devuelve snake_case)
+      // 1. Suscripciones del usuario
       const subsRes = await api.get<Subscription[]>(`/api/v1/users/${userId}/subscriptions`)
-      const projectIds = [...new Set(subsRes.data.map(s => s.project_id).filter(Boolean))]
+      this.subscriptions = Array.isArray(subsRes.data) ? subsRes.data : []
+      const projectIds = [...new Set(this.subscriptions.map(s => s.project_id).filter(Boolean))]
 
-      // 2. Cargar detalle de cada proyecto
+      // 2. Detalle de cada proyecto
       const results = await Promise.allSettled(
         projectIds.map(id =>
           api.get<ProjectDetail>(`/api/v1/projects/${id}`).then(r => r.data)
         )
       )
-
       this.projects = results
         .filter((r): r is PromiseFulfilledResult<ProjectDetail> => r.status === 'fulfilled')
         .map(r => r.value)
 
-      // 3. Seleccionar primer proyecto si el actual no está en la lista
-      if (
-        this.projects.length > 0 &&
-        !this.projects.find(p => p.project_id === this.selectedProject)
-      ) {
+      // 3. Seleccionar proyecto
+      if (this.projects.length > 0 && !this.projects.find(p => p.project_id === this.selectedProject)) {
         this.selectProject(this.projects[0].project_id)
       } else {
-        // Asegurar que el sensor GNSS por defecto es válido para este proyecto
         this.selectProject(this.selectedProject)
       }
     },
 
-    /** El endpoint /alerts no existe en la API actual — no hace nada. */
+    /**
+     * GET /alerts/recent — servicio de alertas en puerto 8088.
+     * No requiere auth. Trae las 200 más recientes y filtra por proyectos del usuario.
+     */
     async loadAlerts(): Promise<void> {
-      // Reservado para cuando la API implemente GET /api/v1/alerts
-      this.alerts = []
+      try {
+        const res = await api.get<RecentAlertsResponse>('/api/v1/alerts/recent', {
+          params: { limit: 200 }
+        })
+        const allAlerts = Array.isArray(res.data?.alerts) ? res.data.alerts : []
+
+        // Filtrar solo los proyectos a los que el usuario está suscrito
+        const myProjects = new Set(this.subscriptions.map(s => s.project_id))
+        this.alerts = allAlerts.filter(a => myProjects.size === 0 || myProjects.has(a.project_id))
+      } catch {
+        this.alerts = []
+      }
     }
   }
 })

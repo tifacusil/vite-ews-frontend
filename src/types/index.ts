@@ -150,6 +150,26 @@ export interface DeepDisplacementReading {
   cumulative_tilt_mm: number
 }
 
+// ─── Recent Alerts (puerto 8088 — /alerts/recent) ────────────────────────────
+
+export interface RecentAlert {
+  alert_level: AlertLevel
+  alert_type: string
+  current_displacement_mm: number
+  previous_displacement_mm: number
+  deformation_speed_mm_day: number
+  threshold_mm_day: number
+  message_id: string
+  project_id: string
+  sensor_id: string
+  schema_version: string
+  timestamp: string
+}
+
+export interface RecentAlertsResponse {
+  alerts: RecentAlert[]
+}
+
 // ─── Date range filter ───────────────────────────────────────────────────────
 
 export type DateRange = '3m' | '6m' | '1y'

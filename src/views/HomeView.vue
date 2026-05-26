@@ -117,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useProjectStore } from '@/stores/project'
 import { useAuthStore } from '@/stores/auth'
 import type { SensorTab } from '@/types'
@@ -164,19 +164,25 @@ const CHART_MAP: Record<SensorTab, unknown> = {
 
 const activeChart = computed(() => CHART_MAP[store.activeTab])
 
-// Al montar: si el usuario está autenticado pero no hay proyectos cargados
-// (p.ej. recarga de página), los cargamos.
+// Polling de alertas cada 60 s (el servicio es ligero y no requiere auth)
+let alertsTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(async () => {
   if (auth.user && store.projects.length === 0) {
-    try {
-      await Promise.allSettled([
-        store.loadProjects(auth.user.userId),
-        store.loadAlerts()
-      ])
-    } catch {
-      // Errores individuales manejados en las actions del store
-    }
+    await Promise.allSettled([
+      store.loadProjects(auth.user.userId),
+      store.loadAlerts()
+    ])
+  } else if (store.subscriptions.length > 0) {
+    // Recarga de página: proyectos ya en store, solo refrescar alertas
+    store.loadAlerts()
   }
+  // Polling de alertas cada 60 segundos
+  alertsTimer = setInterval(() => store.loadAlerts(), 60_000)
+})
+
+onUnmounted(() => {
+  if (alertsTimer !== null) clearInterval(alertsTimer)
 })
 
 function handleLogout() {
