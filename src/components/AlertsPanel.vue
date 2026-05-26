@@ -4,13 +4,13 @@
       Alertas activas — {{ store.selectedProject }}
     </h2>
 
-    <div v-if="alerts.length === 0" class="text-gray-500 text-sm px-1 py-3">
+    <div v-if="store.currentAlerts.length === 0" class="text-gray-500 text-sm px-1 py-3">
       Sin alertas activas para este proyecto.
     </div>
 
     <TransitionGroup name="alert-list" tag="ul" class="flex flex-col gap-2">
       <li
-        v-for="alert in alerts"
+        v-for="alert in store.currentAlerts"
         :key="alert.sensor_id"
         class="flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm"
         :class="alertClass(alert.level)"
@@ -43,14 +43,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useProjectStore } from '@/stores/project'
-import { ACTIVE_ALERTS } from '@/data/mock'
 import type { AlertLevel } from '@/types'
 
 const store = useProjectStore()
-
-const alerts = computed(() => ACTIVE_ALERTS[store.selectedProject] ?? [])
 
 function alertClass(level: AlertLevel): string {
   return {

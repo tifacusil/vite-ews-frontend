@@ -3,7 +3,17 @@
     <div class="flex items-center gap-2 text-xs text-gray-400">
       <span class="font-mono bg-gray-800 px-2 py-0.5 rounded border border-gray-700">GXZM-RG01</span>
       <span>· Barras: lluvia diaria (mm) · Línea: acumulado (mm)</span>
-      <span class="ml-auto text-gray-500">Pico real: 141.4 mm el 2019-07-01</span>
+      <span v-if="loading" class="ml-auto text-gray-500 animate-pulse">Cargando…</span>
+      <span v-else-if="error" class="ml-auto text-red-400">⚠ Error al cargar</span>
+      <span v-else class="ml-auto text-gray-500">Pico: {{ peakLabel }}</span>
+    </div>
+
+    <!-- Error inline -->
+    <div
+      v-if="error && !loading"
+      class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+    >
+      {{ error }}
     </div>
 
     <div class="flex-1 min-h-0">
@@ -13,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
@@ -22,12 +32,49 @@ import {
   DataZoomComponent, MarkLineComponent
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { rainfallMockData } from '@/data/mock'
+import api from '@/api'
+import type { SensorEnvelope, RainfallReading } from '@/types'
 
 use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent,
      DataZoomComponent, MarkLineComponent, CanvasRenderer])
 
-const data = computed(() => rainfallMockData['GXZM-RG01'] ?? [])
+const SENSOR_ID = 'GXZM-RG01'
+const sensorData = ref<RainfallReading[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
+const intervalSeconds = ref(3600)
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const now = new Date()
+    const from = new Date(now.getTime() - 365 * 86400_000)
+    const res = await api.get<SensorEnvelope<RainfallReading>>(
+      `/api/v1/sensors/${SENSOR_ID}/readings`,
+      { params: { sensor_type: 'rainfall', from: from.toISOString(), to: now.toISOString() } }
+    )
+    sensorData.value = res.data.data
+    intervalSeconds.value = res.data.sampling_interval_seconds ?? 3600
+    error.value = null
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loading.value = false
+    if (pollTimer !== null) clearTimeout(pollTimer)
+    pollTimer = setTimeout(fetchData, intervalSeconds.value * 1000)
+  }
+}
+
+onMounted(fetchData)
+onUnmounted(() => { if (pollTimer !== null) clearTimeout(pollTimer) })
+
+const peakLabel = computed(() => {
+  if (sensorData.value.length === 0) return '—'
+  const max = sensorData.value.reduce((a, b) => a.rainfall_mm > b.rainfall_mm ? a : b)
+  return `${max.rainfall_mm.toFixed(1)} mm el ${new Date(max.timestamp).toLocaleDateString('es-MX', { timeZone: 'UTC' })}`
+})
 
 const chartOption = computed(() => ({
   backgroundColor: 'transparent',
@@ -104,15 +151,7 @@ const chartOption = computed(() => ({
         }
       },
       barMaxWidth: 6,
-      data: data.value.map(r => [r.timestamp, r.rainfall_mm]),
-      markLine: {
-        silent: true,
-        data: [{
-          yAxis: 141.4,
-          lineStyle: { color: '#EF4444', type: 'dashed', width: 1.5 },
-          label: { formatter: '141.4 mm\n2019-07-01', color: '#EF4444', fontSize: 9 }
-        }]
-      }
+      data: sensorData.value.map(r => [r.timestamp, r.rainfall_mm])
     },
     {
       name: 'Acumulado',
@@ -122,7 +161,7 @@ const chartOption = computed(() => ({
       showSymbol: false,
       lineStyle: { color: '#22C55E', width: 2 },
       areaStyle: { color: 'rgba(34,197,94,0.08)' },
-      data: data.value.map(r => [r.timestamp, r.cumulative_rainfall_mm])
+      data: sensorData.value.map(r => [r.timestamp, r.cumulative_rainfall_mm])
     }
   ]
 }))

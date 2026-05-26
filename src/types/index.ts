@@ -22,11 +22,55 @@ export interface ActiveAlert {
 // ─── Sensor envelope ────────────────────────────────────────────────────────
 
 export interface SensorEnvelope<T> {
-  project_id: ProjectId
+  project_id: string
   sensor_id: string
   sensor_type: SensorTab
   sampling_interval_seconds: number
   data: T[]
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+export interface LoginResponse {
+  token: string
+  userId: number
+  username: string
+  role: string
+  expiresAt: string
+}
+
+// ─── User Management ─────────────────────────────────────────────────────────
+
+export interface Subscription {
+  id: number
+  projectId: string
+  minAlertLevel: AlertLevel
+  smsEnabled: boolean
+  pushEnabled: boolean
+  emailEnabled: boolean
+  quietHoursStart: string | null
+  quietHoursEnd: string | null
+}
+
+// ─── Project Management ──────────────────────────────────────────────────────
+
+export interface ProjectDetail {
+  project_id: string
+  name: string
+  location_lat: number
+  location_lng: number
+  status: string
+  created_at: string
+}
+
+// ─── Alert (Early Warning — API) ─────────────────────────────────────────────
+
+export interface Alert {
+  sensor_id: string
+  project_id: string
+  level: AlertLevel
+  speed_mm_day: number
+  timestamp: string
 }
 
 // ─── GNSS — REQ-WEB-04 ──────────────────────────────────────────────────────
@@ -75,6 +119,26 @@ export interface DeepDisplacementReading {
   tilt_x_mm: number
   tilt_y_mm: number
   cumulative_tilt_mm: number
+}
+
+// ─── User Management — perfil y registro ─────────────────────────────────────
+
+export interface UserProfile {
+  userId: number
+  username: string
+  email: string
+  phoneE164: string | null
+  role: string
+  status: string
+  createdAt: string
+}
+
+export interface RegisterRequest {
+  username: string
+  email: string
+  phoneE164?: string
+  password: string
+  role: 'admin' | 'operator' | 'viewer'
 }
 
 // ─── Date range filter ───────────────────────────────────────────────────────

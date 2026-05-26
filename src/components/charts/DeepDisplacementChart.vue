@@ -5,11 +5,21 @@
         LZ-DB01
       </span>
       <span>· Perfil vertical de inclinómetro · Anclaje: 15 m → 48.7 mm</span>
-      <span class="ml-auto text-gray-500 font-mono text-xs">
+      <span v-if="loading" class="ml-auto text-gray-500 animate-pulse">Cargando…</span>
+      <span v-else-if="error" class="ml-auto text-red-400">⚠ Error al cargar</span>
+      <span v-else-if="profile.length > 0" class="ml-auto text-gray-500 font-mono text-xs">
         {{ new Date(profile[0]?.timestamp ?? '').toLocaleDateString('es-MX', {
           year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC'
         }) }}
       </span>
+    </div>
+
+    <!-- Error inline -->
+    <div
+      v-if="error && !loading"
+      class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+    >
+      {{ error }}
     </div>
 
     <div class="flex-1 min-h-0">
@@ -19,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -27,12 +37,43 @@ import {
   GridComponent, TooltipComponent, LegendComponent, MarkPointComponent
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { deepDisplacementMockData } from '@/data/mock'
+import api from '@/api'
+import type { SensorEnvelope, DeepDisplacementReading } from '@/types'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent,
      MarkPointComponent, CanvasRenderer])
 
-const profile = computed(() => deepDisplacementMockData['LZ-DB01'] ?? [])
+const SENSOR_ID = 'LZ-DB01'
+const profile = ref<DeepDisplacementReading[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
+const intervalSeconds = ref(3600)
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const now = new Date()
+    const from = new Date(now.getTime() - 365 * 86400_000)
+    const res = await api.get<SensorEnvelope<DeepDisplacementReading>>(
+      `/api/v1/sensors/${SENSOR_ID}/readings`,
+      { params: { sensor_type: 'deep_displacement', from: from.toISOString(), to: now.toISOString() } }
+    )
+    profile.value = res.data.data
+    intervalSeconds.value = res.data.sampling_interval_seconds ?? 3600
+    error.value = null
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loading.value = false
+    if (pollTimer !== null) clearTimeout(pollTimer)
+    pollTimer = setTimeout(fetchData, intervalSeconds.value * 1000)
+  }
+}
+
+onMounted(fetchData)
+onUnmounted(() => { if (pollTimer !== null) clearTimeout(pollTimer) })
 
 // Magnitud resultante √(x²+y²) por profundidad
 function magnitude(x: number, y: number): number {
@@ -51,7 +92,6 @@ const chartOption = computed(() => {
       borderColor: '#374151',
       textStyle: { color: '#f3f4f6', fontSize: 12 },
       formatter: (params: any[]) => {
-        // El eje Y es la profundidad
         const depth = params[0]?.axisValue ?? params[0]?.data[1]
         const rows = params.map((p: any) => {
           const val = Array.isArray(p.value) ? p.value[0] : p.value
@@ -105,7 +145,6 @@ const chartOption = computed(() => {
         symbol: 'circle',
         lineStyle: { color: '#3B82F6', width: 2 },
         itemStyle: { color: '#3B82F6' },
-        // [x_value, depth] → invierte para perfil vertical
         data: p.map(r => [r.tilt_x_mm, r.depth_m])
       },
       {

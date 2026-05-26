@@ -13,7 +13,8 @@ function seededRandom(seed: number): number {
 
 export function generateGnssData(sensorId: string): GnssReading[] {
   const start = new Date('2019-01-01T00:00:00Z').getTime()
-  const stepMs = 2 * 24 * 60 * 60 * 1000 // 2 days
+  const stepMs = 2 * 
+  24 * 60 * 60 * 1000 // 2 days
   const readings: GnssReading[] = []
   let cumulative = 0
   let seed = sensorId.charCodeAt(0) * 13

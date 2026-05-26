@@ -16,35 +16,60 @@
 
       <!-- Indicador de proyecto activo -->
       <div class="ml-auto flex items-center gap-3">
-        <div
-          v-for="p in PROJECTS"
-          :key="p.project_id"
-          class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer"
-          :class="store.selectedProject === p.project_id
-            ? 'border-blue-500 bg-blue-500/10 text-blue-300'
-            : 'border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-500'"
-          @click="store.selectProject(p.project_id)"
-        >
-          <span
-            class="w-2 h-2 rounded-full"
-            :style="{ backgroundColor: ALERT_COLORS[projectAlertLevel(p.project_id)] }"
-          ></span>
-          {{ p.name }}
-        </div>
+        <template v-if="store.projects.length > 0">
+          <div
+            v-for="p in store.projects"
+            :key="p.project_id"
+            class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer"
+            :class="store.selectedProject === p.project_id
+              ? 'border-blue-500 bg-blue-500/10 text-blue-300'
+              : 'border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-500'"
+            @click="store.selectProject(p.project_id)"
+          >
+            <span
+              class="w-2 h-2 rounded-full"
+              :style="{ backgroundColor: ALERT_COLORS[store.alertLevelFor(p.project_id)] }"
+            ></span>
+            {{ p.name }}
+          </div>
+        </template>
+        <!-- Fallback mientras cargan los proyectos -->
+        <template v-else>
+          <div class="text-xs text-gray-500 italic">Cargando proyectos…</div>
+        </template>
 
         <!-- Indicador polling -->
         <div class="flex items-center gap-1.5 text-xs text-gray-500">
           <span
             class="w-1.5 h-1.5 rounded-full animate-pulse"
-            :class="pollingError ? 'bg-red-500' : 'bg-green-500'"
+            :class="store.pollingError ? 'bg-red-500' : 'bg-green-500'"
           ></span>
-          {{ pollingError ? 'Error' : 'Activo' }}
-          · {{ pollingInterval }}s
+          {{ store.pollingError ? 'Error' : 'Activo' }}
+          · {{ store.pollingInterval }}s
         </div>
+
+        <!-- Enlace Usuarios (solo admin) -->
+        <router-link
+          v-if="auth.user?.role === 'admin'"
+          to="/users"
+          class="text-xs text-gray-400 hover:text-gray-200 transition-colors px-2 py-1
+                 rounded border border-gray-700 hover:border-gray-500"
+        >
+          Usuarios
+        </router-link>
+
+        <!-- Botón cerrar sesión -->
+        <button
+          @click="handleLogout"
+          class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1
+                 rounded border border-gray-700 hover:border-gray-500"
+        >
+          Salir
+        </button>
       </div>
     </header>
 
-    <!-- Main — 2 columns -->
+    <!-- Main — 2 columnas -->
     <main class="flex flex-1 min-h-0 overflow-hidden">
 
       <!-- LEFT COLUMN 30% -->
@@ -92,9 +117,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useProjectStore } from '@/stores/project'
-import { PROJECTS, projectAlertLevel } from '@/data/mock'
+import { useAuthStore } from '@/stores/auth'
 import type { SensorTab } from '@/types'
 
 import ProjectMap from '@/components/ProjectMap.vue'
@@ -106,6 +131,7 @@ import StrainChart from '@/components/charts/StrainChart.vue'
 import DeepDisplacementChart from '@/components/charts/DeepDisplacementChart.vue'
 
 const store = useProjectStore()
+const auth = useAuthStore()
 
 const ALERT_COLORS: Record<string, string> = {
   red:    '#EF4444',
@@ -138,11 +164,24 @@ const CHART_MAP: Record<SensorTab, unknown> = {
 
 const activeChart = computed(() => CHART_MAP[store.activeTab])
 
-// Simular polling — usa usePolling con datos mock (REQ-WEB-09)
-// En producción: fetchFn llamaría al endpoint real; el interval vendría
-// del último envelope (sampling_interval_seconds).
-const pollingInterval = ref(3600)
-const pollingError = ref<string | null>(null)
+// Al montar: si el usuario está autenticado pero no hay proyectos cargados
+// (p.ej. recarga de página), los cargamos.
+onMounted(async () => {
+  if (auth.user && store.projects.length === 0) {
+    try {
+      await Promise.allSettled([
+        store.loadProjects(auth.user.userId),
+        store.loadAlerts()
+      ])
+    } catch {
+      // Errores individuales manejados en las actions del store
+    }
+  }
+})
+
+function handleLogout() {
+  auth.logout()
+}
 </script>
 
 <style scoped>

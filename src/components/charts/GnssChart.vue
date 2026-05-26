@@ -26,9 +26,22 @@
         >{{ r.label }}</button>
       </div>
 
-      <div class="ml-auto text-xs text-gray-500 font-mono">
-        {{ filteredData.length }} puntos rtk_fixed
+      <div class="ml-auto flex items-center gap-3">
+        <!-- Estado de carga / error -->
+        <span v-if="loading" class="text-xs text-gray-500 animate-pulse">Cargando…</span>
+        <span v-else-if="error" class="text-xs text-red-400" :title="error">⚠ Error al cargar</span>
+        <span v-else class="text-xs text-gray-500 font-mono">
+          {{ filteredData.length }} puntos rtk_fixed
+        </span>
       </div>
+    </div>
+
+    <!-- Error inline sin romper layout -->
+    <div
+      v-if="error && !loading"
+      class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+    >
+      {{ error }}
     </div>
 
     <!-- Chart -->
@@ -43,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -52,17 +65,24 @@ import {
   DataZoomComponent, ToolboxComponent
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { gnssMockData, GNSS_SENSORS } from '@/data/mock'
+import { GNSS_SENSORS } from '@/data/mock'
 import { useProjectStore } from '@/stores/project'
-import type { DateRange } from '@/types'
+import api from '@/api'
+import type { SensorEnvelope, GnssReading, DateRange } from '@/types'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent,
      DataZoomComponent, ToolboxComponent, CanvasRenderer])
 
 const store = useProjectStore()
 
-const selectedSensor = ref('GXZM-DB03')
+const selectedSensor = ref(store.selectedGnssSensor || 'GXZM-DB03')
 const selectedRange = ref<DateRange>('1y')
+const sensorData = ref<GnssReading[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
+const intervalSeconds = ref(3600)
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 // Sincronizar con store
 watch(selectedSensor, s => store.setGnssSensor(s))
@@ -74,19 +94,53 @@ const ranges: Array<{ label: string; value: DateRange }> = [
 ]
 
 function cutoffDate(range: DateRange): Date {
-  const last = new Date('2019-12-29T00:00:00Z')
-  if (range === '3m') return new Date(last.getTime() - 90  * 86400_000)
-  if (range === '6m') return new Date(last.getTime() - 180 * 86400_000)
-  return new Date(last.getTime() - 365 * 86400_000)
+  const now = new Date()
+  if (range === '3m') return new Date(now.getTime() - 90  * 86400_000)
+  if (range === '6m') return new Date(now.getTime() - 180 * 86400_000)
+  return new Date(now.getTime() - 365 * 86400_000)
 }
 
-const filteredData = computed(() => {
-  const raw = gnssMockData[selectedSensor.value] ?? []
-  // REQ-WEB-04: filtrar silenciosamente fix_quality != rtk_fixed
-  const fixed = raw.filter(r => r.fix_quality === 'rtk_fixed')
-  const cutoff = cutoffDate(selectedRange.value)
-  return fixed.filter(r => new Date(r.timestamp) >= cutoff)
+async function fetchData() {
+  loading.value = true
+  try {
+    const now = new Date()
+    const from = cutoffDate(selectedRange.value)
+    const res = await api.get<SensorEnvelope<GnssReading>>(
+      `/api/v1/sensors/${selectedSensor.value}/readings`,
+      { params: { sensor_type: 'gnss', from: from.toISOString(), to: now.toISOString() } }
+    )
+    sensorData.value = res.data.data
+    intervalSeconds.value = res.data.sampling_interval_seconds ?? 3600
+    store.setPollingInterval(intervalSeconds.value)
+    store.setPollingError(null)
+    error.value = null
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    error.value = msg
+    store.setPollingError(msg)
+  } finally {
+    loading.value = false
+    schedulePoll()
+  }
+}
+
+function schedulePoll() {
+  if (pollTimer !== null) clearTimeout(pollTimer)
+  pollTimer = setTimeout(fetchData, intervalSeconds.value * 1000)
+}
+
+// Re-fetch al cambiar sensor o rango
+watch([selectedSensor, selectedRange], () => {
+  if (pollTimer !== null) clearTimeout(pollTimer)
+  fetchData()
 })
+
+onMounted(fetchData)
+onUnmounted(() => { if (pollTimer !== null) clearTimeout(pollTimer) })
+
+const filteredData = computed(() =>
+  sensorData.value.filter(r => r.fix_quality === 'rtk_fixed')
+)
 
 const chartOption = computed(() => ({
   backgroundColor: 'transparent',

@@ -12,6 +12,16 @@
         />
         <span class="text-gray-400">Mostrar temperatura (°C)</span>
       </label>
+      <span v-if="loading" class="ml-auto text-gray-500 animate-pulse">Cargando…</span>
+      <span v-else-if="error" class="ml-auto text-red-400">⚠ Error al cargar</span>
+    </div>
+
+    <!-- Error inline -->
+    <div
+      v-if="error && !loading"
+      class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+    >
+      {{ error }}
     </div>
 
     <div class="flex-1 min-h-0">
@@ -21,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -29,12 +39,43 @@ import {
   GridComponent, TooltipComponent, LegendComponent, DataZoomComponent
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { soilPressureMockData } from '@/data/mock'
+import api from '@/api'
+import type { SensorEnvelope, SoilPressureReading } from '@/types'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
-const data = computed(() => soilPressureMockData['GXZM-SP01'] ?? [])
+const SENSOR_ID = 'GXZM-SP01'
+const sensorData = ref<SoilPressureReading[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
+const intervalSeconds = ref(3600)
 const showTemperature = ref(true)
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const now = new Date()
+    const from = new Date(now.getTime() - 365 * 86400_000)
+    const res = await api.get<SensorEnvelope<SoilPressureReading>>(
+      `/api/v1/sensors/${SENSOR_ID}/readings`,
+      { params: { sensor_type: 'soil_pressure', from: from.toISOString(), to: now.toISOString() } }
+    )
+    sensorData.value = res.data.data
+    intervalSeconds.value = res.data.sampling_interval_seconds ?? 3600
+    error.value = null
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loading.value = false
+    if (pollTimer !== null) clearTimeout(pollTimer)
+    pollTimer = setTimeout(fetchData, intervalSeconds.value * 1000)
+  }
+}
+
+onMounted(fetchData)
+onUnmounted(() => { if (pollTimer !== null) clearTimeout(pollTimer) })
 
 const chartOption = computed(() => ({
   backgroundColor: 'transparent',
@@ -91,7 +132,7 @@ const chartOption = computed(() => ({
       showSymbol: false,
       lineStyle: { color: '#a855f7', width: 2 },
       areaStyle: { color: 'rgba(168,85,247,0.08)' },
-      data: data.value.map(r => [r.timestamp, r.pressure_kpa])
+      data: sensorData.value.map(r => [r.timestamp, r.pressure_kpa])
     },
     ...(showTemperature.value ? [{
       name: 'Temperatura (°C)',
@@ -100,7 +141,7 @@ const chartOption = computed(() => ({
       smooth: true,
       showSymbol: false,
       lineStyle: { color: '#f59e0b', width: 1.5, type: 'dashed' },
-      data: data.value.map(r => [r.timestamp, r.temperature_celsius])
+      data: sensorData.value.map(r => [r.timestamp, r.temperature_celsius])
     }] : [])
   ]
 }))

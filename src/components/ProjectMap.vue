@@ -55,9 +55,9 @@
 
         <!-- Marcadores de proyecto -->
         <g
-          v-for="project in projects"
+          v-for="project in store.projects"
           :key="project.project_id"
-          :transform="`translate(${projectX(project.lng)}, ${projectY(project.lat)})`"
+          :transform="`translate(${projectX(project.location_lng)}, ${projectY(project.location_lat)})`"
           class="cursor-pointer"
           @click="onMarkerClick(project.project_id)"
         >
@@ -121,10 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useProjectStore } from '@/stores/project'
-import { PROJECTS, ACTIVE_ALERTS, projectAlertLevel } from '@/data/mock'
-import type { ProjectId } from '@/types'
 
 const store = useProjectStore()
 
@@ -157,7 +154,7 @@ const ALERT_COLORS: Record<string, string> = {
 }
 
 function alertColor(projectId: string): string {
-  return ALERT_COLORS[projectAlertLevel(projectId)] ?? '#22C55E'
+  return ALERT_COLORS[store.alertLevelFor(projectId)] ?? '#22C55E'
 }
 
 function isSelected(id: string): boolean {
@@ -165,22 +162,17 @@ function isSelected(id: string): boolean {
 }
 
 function onMarkerClick(id: string): void {
-  store.selectProject(id as ProjectId)
+  store.selectProject(id)
 }
 
 function labelWidth(name: string): number {
   return name.length * 5.5 + 8
 }
 
-const projects = computed(() => PROJECTS)
-
 const legend = [
-  { label: 'Red  ≥20 mm/día', color: '#EF4444' },
+  { label: 'Red  ≥20 mm/día',  color: '#EF4444' },
   { label: 'Naranja ≥15 mm/día', color: '#F97316' },
-  { label: 'Azul ≥10 mm/día', color: '#3B82F6' },
-  { label: 'Verde sin alerta', color: '#22C55E' }
+  { label: 'Azul ≥10 mm/día',  color: '#3B82F6' },
+  { label: 'Verde sin alerta',  color: '#22C55E' }
 ]
-
-// Silence unused import warning
-void ACTIVE_ALERTS
 </script>

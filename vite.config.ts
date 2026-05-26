@@ -8,5 +8,15 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
+  },
+  server: {
+    proxy: {
+      // En desarrollo, /api/... → http://204.168.203.32/api/...
+      // Evita problemas de CORS sin tocar el servidor.
+      '/api': {
+        target: 'http://204.168.203.32',
+        changeOrigin: true
+      }
+    }
   }
 })
