@@ -59,10 +59,9 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      # Escribir .env desde el secret antes de que Vite lo lea durante el build
+      # VITE_API_BASE_URL vacío → rutas relativas → proxy vercel.json → backend HTTP
       - name: Create .env
-        run: |
-          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env
+        run: echo "VITE_API_BASE_URL=" > .env
 
       # vercel pull solo vincula el proyecto (.vercel/project.json); no toca .env
       - name: Link Vercel project
@@ -111,10 +110,9 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      # Escribir .env desde el secret antes de que Vite lo lea durante el build
+      # VITE_API_BASE_URL vacío → rutas relativas → proxy vercel.json → backend HTTP
       - name: Create .env
-        run: |
-          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env
+        run: echo "VITE_API_BASE_URL=" > .env
 
       # vercel pull solo vincula el proyecto (.vercel/project.json); no toca .env
       - name: Link Vercel project
