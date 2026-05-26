@@ -77,7 +77,7 @@
             <tbody>
               <tr
                 v-for="user in users"
-                :key="user.userId"
+                :key="user.user_id"
                 class="border-b border-gray-800/60 hover:bg-gray-800/30 transition-colors"
               >
                 <td class="px-5 py-3 font-mono text-gray-200 text-xs">{{ user.username }}</td>
@@ -440,7 +440,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import {
-  getUser, updateUser, getSubscriptions, createSubscription, register
+  listUsers, getUser, updateUser, getSubscriptions, createSubscription, register
 } from '@/api/userManagement'
 import type { UserProfile, Subscription, AlertLevel, RegisterRequest } from '@/types'
 
@@ -452,17 +452,23 @@ const users = ref<UserProfile[]>([])
 const loadingList = ref(false)
 const listError = ref<string | null>(null)
 
-// Carga el propio usuario admin (el único que conocemos con certeza es el autenticado).
-// Si la API implementa GET /users en el futuro, reemplazar aquí.
 async function loadUsers() {
   loadingList.value = true
   listError.value = null
   try {
-    if (!auth.user?.userId) throw new Error('Sin sesión activa')
-    const res = await getUser(auth.user.userId)
-    users.value = [res.data]
+    const res = await listUsers()
+    // La API puede devolver un array directamente o un objeto envuelto
+    const data = res.data
+    users.value = Array.isArray(data) ? data : []
   } catch (err) {
-    listError.value = err instanceof Error ? err.message : 'Error al cargar usuarios.'
+    // Fallback: si GET /users no está disponible, cargar solo el usuario actual
+    try {
+      if (!auth.user?.userId) throw new Error('Sin sesión activa')
+      const res = await getUser(auth.user.userId)
+      users.value = [res.data]
+    } catch {
+      listError.value = err instanceof Error ? err.message : 'Error al cargar usuarios.'
+    }
   } finally {
     loadingList.value = false
   }

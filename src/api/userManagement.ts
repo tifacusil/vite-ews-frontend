@@ -12,6 +12,9 @@ export const register = (data: RegisterRequest) =>
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 
+export const listUsers = () =>
+  api.get<UserProfile[]>('/api/v1/users')
+
 export const getUser = (userId: number) =>
   api.get<UserProfile>(`/api/v1/users/${userId}`)
 
