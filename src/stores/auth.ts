@@ -48,13 +48,19 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    logout(): void {
-      this.token = null
-      this.user = null
-      localStorage.removeItem('jwt_token')
-      localStorage.removeItem('jwt_user')
-      localStorage.removeItem('jwt_expires_at')
-      window.location.href = '/login'
+    async logout(): Promise<void> {
+      try {
+        await api.post('/api/v1/auth/logout')
+      } catch {
+        // best-effort: revoke server-side tokens; proceed regardless
+      } finally {
+        this.token = null
+        this.user = null
+        localStorage.removeItem('jwt_token')
+        localStorage.removeItem('jwt_user')
+        localStorage.removeItem('jwt_expires_at')
+        window.location.href = '/login'
+      }
     }
   }
 })
