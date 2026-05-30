@@ -84,20 +84,11 @@ export const useProjectStore = defineStore('project', {
       this.subscriptions = Array.isArray(subsRes.data) ? subsRes.data : []
       const projectIds = [...new Set(this.subscriptions.map(s => s.project_id).filter(Boolean))]
 
-      // 2. Detalle de cada proyecto + sus sensores (endpoint separado en port 8084)
+      // 2. Detalle de cada proyecto
       const results = await Promise.allSettled(
-        projectIds.map(async id => {
-          const [projectRes, sensorsRes] = await Promise.allSettled([
-            api.get<ProjectDetail>(`/api/v1/projects/${id}`),
-            api.get<ProjectSensor[]>(`/api/v1/projects/${id}/sensors`)
-          ])
-          if (projectRes.status === 'rejected') throw projectRes.reason
-          const project = projectRes.value.data
-          project.sensors = sensorsRes.status === 'fulfilled'
-            ? (Array.isArray(sensorsRes.value.data) ? sensorsRes.value.data : [])
-            : []
-          return project
-        })
+        projectIds.map(id =>
+          api.get<ProjectDetail>(`/api/v1/projects/${id}`).then(r => r.data)
+        )
       )
       this.projects = results
         .filter((r): r is PromiseFulfilledResult<ProjectDetail> => r.status === 'fulfilled')
