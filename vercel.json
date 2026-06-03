@@ -8,6 +8,10 @@
       "source": "/api/:path*",
       "destination": "http://204.168.203.32/api/:path*"
     },
+    {
+      "source": "/data-analysis/:path*",
+      "destination": "http://204.168.203.32/data-analysis/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
