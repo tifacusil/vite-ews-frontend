@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full gap-3">
+  <div class="flex flex-col h-full gap-3 overflow-hidden">
     <div class="flex items-center gap-2 text-xs text-gray-400">
       <span class="font-mono bg-gray-800 px-2 py-0.5 rounded border border-gray-700">GXZM-RG01</span>
       <span>· Barras: lluvia diaria (mm) · Línea: acumulado (mm)</span>
@@ -16,6 +16,12 @@
     <div class="flex-1 min-h-0">
       <VChart :option="chartOption" autoresize class="w-full h-full" />
     </div>
+
+    <AnalysisPanel
+      :values="sensorData.map(r => r.rainfall_mm)"
+      :timestamps="sensorData.map(r => r.timestamp)"
+      unit="mm"
+    />
   </div>
 </template>
 
@@ -28,6 +34,7 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, Ma
 import { CanvasRenderer } from 'echarts/renderers'
 import api from '@/api'
 import type { ApiReadingsResponse, RainfallReading } from '@/types'
+import AnalysisPanel from '@/components/AnalysisPanel.vue'
 
 use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, CanvasRenderer])
 

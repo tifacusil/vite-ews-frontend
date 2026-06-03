@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full gap-3">
+  <div class="flex flex-col h-full gap-3 overflow-hidden">
     <div class="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
       <span class="font-mono bg-gray-800 px-2 py-0.5 rounded border border-gray-700 text-gray-300">LZ-DB01</span>
       <span>· Perfil vertical de inclinómetro</span>
@@ -20,6 +20,12 @@
     <div class="flex-1 min-h-0">
       <VChart :option="chartOption" autoresize class="w-full h-full" />
     </div>
+
+    <AnalysisPanel
+      :values="analysisMagnitudes"
+      :timestamps="analysisTimestamps"
+      unit="mm"
+    />
   </div>
 </template>
 
@@ -32,6 +38,7 @@ import { GridComponent, TooltipComponent, LegendComponent, MarkPointComponent } 
 import { CanvasRenderer } from 'echarts/renderers'
 import api from '@/api'
 import type { ApiReadingsResponse, DeepDisplacementReading } from '@/types'
+import AnalysisPanel from '@/components/AnalysisPanel.vue'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkPointComponent, CanvasRenderer])
 
@@ -66,6 +73,18 @@ onUnmounted(() => { if (pollTimer !== null) clearTimeout(pollTimer) })
 function magnitude(x: number, y: number): number {
   return parseFloat(Math.sqrt(x * x + y * y).toFixed(2))
 }
+
+// For analysis: one point per unique timestamp, using the max cumulative_tilt_mm at that time
+const analysisByTs = computed(() => {
+  const map = new Map<string, number>()
+  for (const r of profile.value) {
+    const prev = map.get(r.timestamp) ?? -Infinity
+    map.set(r.timestamp, Math.max(prev, r.cumulative_tilt_mm))
+  }
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+})
+const analysisTimestamps = computed(() => analysisByTs.value.map(([ts]) => ts))
+const analysisMagnitudes = computed(() => analysisByTs.value.map(([, v]) => v))
 
 const maxDepth = computed(() => {
   if (!profile.value.length) return 16

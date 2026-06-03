@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full gap-3">
+  <div class="flex flex-col h-full gap-3 overflow-hidden">
     <div class="flex items-center gap-3 text-xs">
       <span class="font-mono bg-gray-800 px-2 py-0.5 rounded border border-gray-700 text-gray-300">GXZM-SG02</span>
       <label class="flex items-center gap-1.5 cursor-pointer select-none">
@@ -18,6 +18,12 @@
     <div class="flex-1 min-h-0">
       <VChart :option="chartOption" autoresize class="w-full h-full" />
     </div>
+
+    <AnalysisPanel
+      :values="sensorData.map(r => r.strain_microstrain)"
+      :timestamps="sensorData.map(r => r.timestamp)"
+      unit="µε"
+    />
   </div>
 </template>
 
@@ -30,6 +36,7 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } f
 import { CanvasRenderer } from 'echarts/renderers'
 import api from '@/api'
 import type { ApiReadingsResponse, StrainReading } from '@/types'
+import AnalysisPanel from '@/components/AnalysisPanel.vue'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 

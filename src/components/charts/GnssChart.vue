@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full gap-3">
+  <div class="flex flex-col h-full gap-3 overflow-hidden">
     <!-- Controles -->
     <div class="flex items-center gap-4 flex-wrap">
       <div class="flex items-center gap-2">
@@ -43,6 +43,12 @@
     <div class="flex-1 min-h-0">
       <VChart :option="chartOption" autoresize class="w-full h-full" />
     </div>
+
+    <AnalysisPanel
+      :values="analysisValues"
+      :timestamps="analysisTimestamps"
+      unit="mm"
+    />
   </div>
 </template>
 
@@ -56,6 +62,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { useProjectStore } from '@/stores/project'
 import api from '@/api'
 import type { ApiReadingsResponse, GnssReading, DateRange } from '@/types'
+import AnalysisPanel from '@/components/AnalysisPanel.vue'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, ToolboxComponent, CanvasRenderer])
 
@@ -130,6 +137,9 @@ onUnmounted(() => { if (pollTimer !== null) clearTimeout(pollTimer) })
 const filteredData = computed(() =>
   sensorData.value.filter(r => r.fix_quality === 'rtk_fixed')
 )
+
+const analysisValues     = computed(() => filteredData.value.map(r => r.cumulative_displacement_mm))
+const analysisTimestamps = computed(() => filteredData.value.map(r => r.timestamp))
 
 const chartOption = computed(() => ({
   backgroundColor: 'transparent',
