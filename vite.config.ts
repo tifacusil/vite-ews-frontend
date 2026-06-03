@@ -14,6 +14,10 @@ export default defineConfig({
       '/api': {
         target: 'http://204.168.203.32',
         changeOrigin: true
+      },
+      '/data-analysis': {
+        target: 'http://204.168.203.32',
+        changeOrigin: true
       }
     }
   }

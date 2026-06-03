@@ -173,3 +173,141 @@ export interface RecentAlertsResponse {
 // ─── Date range filter ───────────────────────────────────────────────────────
 
 export type DateRange = '3m' | '6m' | '1y'
+
+// ─── Analysis Service ────────────────────────────────────────────────────────
+
+export interface AnalysisRequest {
+  values: number[]
+  timestamps: string[]
+}
+
+// Health
+
+export interface AnalysisHealthResponse {
+  status: 'ok' | 'degraded'
+  redis: 'connected' | 'unavailable'
+  consul: 'registered' | 'unregistered'
+  version: string
+  libs: {
+    pywt: 'available' | 'unavailable'
+    PyEMD: 'available' | 'unavailable'
+    statsmodels: 'available' | 'unavailable'
+  }
+}
+
+// Outliers
+
+export type OutlierMethod = '3sigma' | 'chauvenet' | 'iqr'
+
+export interface OutliersRequest extends AnalysisRequest {
+  method: OutlierMethod
+}
+
+export interface OutlierItem {
+  index: number
+  timestamp: string
+  value: number
+  threshold_upper?: number
+  threshold_lower?: number
+  criterion?: 'exceeds_upper' | 'exceeds_lower'
+  z_score?: number
+  probability?: number
+}
+
+export interface OutliersResponse {
+  method: OutlierMethod
+  outliers: OutlierItem[]
+  statistics: {
+    mean: number
+    std: number
+    n: number
+    outlier_count: number
+  }
+}
+
+// Denoise
+
+export type DenoiseMethod = 'wavelet' | 'emd' | 'svm'
+
+export interface DenoiseRequest extends AnalysisRequest {
+  method: DenoiseMethod
+}
+
+export interface DenoiseParamsWavelet {
+  wavelet: string
+  level: number
+  threshold: number
+  mode: string
+  sigma: number
+}
+
+export interface DenoiseParamsEmd {
+  imf_count: number
+  removed_imfs: number[]
+  strategy: string
+  quantile: number
+  zcrs: number[]
+}
+
+export interface DenoiseParamsSvm {
+  kernel: string
+  C: number
+  epsilon: number
+  gamma: number
+  feature: string
+}
+
+export interface DenoiseParamsFallback {
+  fallback: 'moving_average'
+  window: number
+}
+
+export interface DenoiseResponse {
+  denoised_values: number[]
+  method: DenoiseMethod
+  params: DenoiseParamsWavelet | DenoiseParamsEmd | DenoiseParamsSvm | DenoiseParamsFallback
+}
+
+// Regression
+
+export type RegressionModel = 'polynomial' | 'bayesian'
+
+export interface RegressionRequest extends AnalysisRequest {
+  model: RegressionModel
+  degree?: number
+}
+
+export interface RegressionResponse {
+  coefficients: number[]
+  fitted_values: number[]
+  r2_score: number
+  model: RegressionModel
+  degree: number | null
+}
+
+// Predict
+
+export type PredictModel = 'arima' | 'gm11'
+
+export interface PredictRequest extends AnalysisRequest {
+  model: PredictModel
+  horizon: number
+  arima_order?: [number, number, number]
+}
+
+export interface PredictResponse {
+  predicted_values: number[]
+  predicted_timestamps: string[]
+  confidence_lower: number[] | null
+  confidence_upper: number[] | null
+  model: PredictModel
+  horizon: number
+  order: [number, number, number] | null
+}
+
+// Error
+
+export interface AnalysisErrorResponse {
+  error: 'validation_error' | 'internal_error'
+  message: string | Record<string, string[]>
+}
